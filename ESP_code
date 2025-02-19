@@ -1,0 +1,77 @@
+#include <WiFi.h>
+#include <WebSocketsServer.h>
+
+// WiFi credentials
+const char* ssid = "my_wifi";
+const char* password = "12345678";
+
+// WebSocket server on port 81
+WebSocketsServer webSocket = WebSocketsServer(81);
+
+// Variable to track connected clients
+bool clientConnected = false;
+uint8_t clientNum = 0;
+
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+    switch(type) {
+        case WStype_DISCONNECTED:
+            Serial.printf("[%u] Disconnected!\n", num);
+            clientConnected = false;
+            break;
+            
+        case WStype_CONNECTED:
+            {
+                IPAddress ip = webSocket.remoteIP(num);
+                Serial.printf("[%u] Connected from %d.%d.%d.%d\n", num, ip[0], ip[1], ip[2], ip[3]);
+                clientConnected = true;
+                clientNum = num;
+            }
+            break;
+            
+        case WStype_TEXT:
+            {
+                // Print received message
+                String message = String((char*)payload);
+                Serial.println("Received from ROS: " + message);
+            }
+            break;
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    
+    // Connect to WiFi
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("\nWiFi connected");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+    
+    // Start WebSocket server
+    webSocket.begin();
+    webSocket.onEvent(webSocketEvent);
+    Serial.println("WebSocket server started");
+}
+
+void loop() {
+    webSocket.loop();
+    
+    // Send message every 2 seconds if client is connected
+    static unsigned long lastSendTime = 0;
+    static int messageCount = 0;
+    
+    if (clientConnected && (millis() - lastSendTime > 2000)) {
+        // Create simple message
+        String message = "Hello from ESP32 #" + String(messageCount++);
+        
+        // Send to connected client
+        webSocket.sendTXT(clientNum, message);
+        Serial.println("Sent to ROS: " + message);
+        
+        lastSendTime = millis();
+    }
+}
